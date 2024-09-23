@@ -25,7 +25,7 @@ using namespace std;
  * @param infile a valid reference to a flat text file storing the grammar.
  * @param grammar a reference to the STL map, which maps nonterminal strings
  *                to their definitions.
- helllo temo*/
+ */
 
 static void readGrammar(ifstream& infile, map<string, Definition>& grammar)
 {
