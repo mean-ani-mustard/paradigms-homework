@@ -25,7 +25,7 @@ using namespace std;
  * @param infile a valid reference to a flat text file storing the grammar.
  * @param grammar a reference to the STL map, which maps nonterminal strings
  *                to their definitions.
- */
+*/
 
 static void readGrammar(ifstream& infile, map<string, Definition>& grammar)
 {
@@ -38,6 +38,46 @@ static void readGrammar(ifstream& infile, map<string, Definition>& grammar)
     grammar[def.getNonterminal()] = def;
   }
 }
+/**
+ * Checks if the given string is a terminal word (i.e., does not start with '<').
+ * 
+ */
+ 
+ bool terminalWord (const string s){
+  if(s!=""){
+    return s[0]!='<';
+  }
+  return true;
+}
+
+
+/**
+ * Generates a random sentence by recursively expanding the given non-terminal.
+ * Terminal words are directly added to the sentence, while non-terminals are expanded
+ * recursively. Spaces are added between words.
+ * 
+ */
+ string generateSentence(map<string, Definition>& grammar, string str){
+    string sentence;
+    Production startSentence = grammar[str].getRandomProduction();
+    for (Production::iterator curr = startSentence.begin(); curr != startSentence.end(); ++curr){
+      if(terminalWord(*curr)){
+        sentence += *curr;
+      }else{
+        sentence += generateSentence(grammar, *curr);
+
+      }
+      if(curr+1 !=startSentence.end()){
+        sentence += " ";
+      }
+    }
+    
+    return sentence;
+}
+
+
+
+
 
 /**
  * Performs the rudimentary error checking needed to confirm that
@@ -69,11 +109,13 @@ int main(int argc, char *argv[])
     return 2; // each bad thing has its own bad return value
   }
   
-  // things are looking good...
   map<string, Definition> grammar;
   readGrammar(grammarFile, grammar);
-  cout << "The grammar file called \"" << argv[1] << "\" contains "
-       << grammar.size() << " definitions." << endl;
-  
-  return 0;
+  string result;
+  for (int i =1; i<=3; i++){
+    result = generateSentence (grammar, "<start>");
+    cout << "Version #" << i << ": --------------------------" <<endl;
+    cout << result << endl;
+    cout << endl;
+  }
 }
