@@ -36,7 +36,49 @@ static string promptForActor(const string& prompt, const imdb& db)
 	 << "Please try again." << endl;
   }
 }
+void generateShortestPath (string source, string target, imdb& db){
+  list <path> partialPaths;
+  set <string> previouslySeenActors;
+  set <film> previouslySeenFilms;
+  path initialPath(source);
+  partialPaths.push_back(initialPath);
+  while (!partialPaths.empty() && partialPaths.front().getLength()<6){
+    path cur = partialPaths.front();
+    partialPaths.pop_front();
+    string lastActor = cur.getLastPlayer();
+    vector <film> movies;
+    db.getCredits(lastActor, movies);
+    for (film movie: movies){
+      if (previouslySeenFilms.find(movie) == previouslySeenFilms.end()) {
+        previouslySeenFilms.insert(movie);
+        vector <string> movieCast;
+        db.getCast(movie, movieCast);
+        for (string str: movieCast){
+          if(previouslySeenActors.find(str) == previouslySeenActors.end()){
+            previouslySeenActors.insert(str);
+            path cloned = cur;
+            cloned.addConnection (movie, str);
+            if(str == target){
+              partialPaths.push_back(cloned);
+              cout << cloned;
+              return;
+            }
+            partialPaths.push_back(cloned);
+          }
+        }
 
+
+
+
+      }
+        
+    }
+
+
+  }
+  cout << "No path between those two people could be found." << endl;
+  
+}
 /**
  * Serves as the main entry point for the six-degrees executable.
  * There are no parameters to speak of.
@@ -51,6 +93,7 @@ static string promptForActor(const string& prompt, const imdb& db)
  *             as well.
  * @return 0 if the program ends normally, and undefined otherwise.
  */
+
 
 int main(int argc, const char *argv[])
 {
@@ -69,12 +112,13 @@ int main(int argc, const char *argv[])
     if (source == target) {
       cout << "Good one.  This is only interesting if you specify two different people." << endl;
     } else {
-      // replace the following line by a call to your generateShortestPath routine... 
-      cout << endl << "No path between those two people could be found." << endl << endl;
+      generateShortestPath(source, target, db);
     }
   }
   
   cout << "Thanks for playing!" << endl;
   return 0;
 }
+
+
 
