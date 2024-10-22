@@ -68,7 +68,11 @@ typedef void (*VectorFreeFunction)(void *elemAddr);
  */
 
 typedef struct {
-  // to be filled in by you
+  int allocSpace;
+  int logicSpace;
+  int myElemSize;
+  void *elems;
+  VectorFreeFunction func;
 } vector;
 
 /** 
@@ -233,7 +237,7 @@ void VectorDelete(vector *v, int position);
  * used.  If a match is found, the position of the matching element is returned;
  * else the function returns -1.  Calling this function does not 
  * re-arrange or change contents of the vector or modify the key in any way.
- * 
+ *  
  * An assert is raised if startIndex is less than 0 or greater than
  * the logical length (although searching from logical length will never
  * find anything, allowing this case means you can search an entirely empty
