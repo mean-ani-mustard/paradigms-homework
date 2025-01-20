@@ -137,10 +137,10 @@
 ;; cons'ed to the front of it.  
 ;; 
 
-(define (partition pivot num-list)
+(define (partition pivot num-list cmp)
   (if (null? num-list) '(() ())
-      (let ((split-of-rest (partition pivot (cdr num-list))))
-	(if (< (car num-list) pivot)
+      (let ((split-of-rest (partition pivot (cdr num-list) cmp)))
+	(if (cmp (car num-list) pivot)
 	    (list (cons (car num-list) (car split-of-rest)) (cadr split-of-rest))
 	    (list (car split-of-rest) (cons (car num-list) (car (cdr split-of-rest))))))))
 
@@ -156,12 +156,13 @@
 ;; together in the proper order.
 ;;
 
-(define (quicksort num-list)
+(define (quicksort num-list comp)
   (if (<= (length num-list) 1) num-list
-      (let ((split (partition (car num-list) (cdr num-list))))
-	(append (quicksort (car split)) 
+      (let ((split (partition (car num-list) (cdr num-list) comp )))
+	(append (quicksort (car split) comp) 
 		(list (car num-list)) 
-		(quicksort (cadr split))))))
+		(quicksort (cadr split) comp)))))
+
 
 ;;
 ;; Function: remove
@@ -209,6 +210,58 @@
 ;; it to override exisiting definitions and including
 ;; the most recently implemented into the lot.
 ;;
+
+
+;; #1 intersection-points
+(define (intersection-points circles)
+  (let loop ((remaining circles) (intersections '()))
+    (if (< (length remaining) 2) intersections
+    (let ((first-circle (car remaining)) (rest-circles (cdr remaining)))
+      (loop rest-circles (append intersections 
+      (apply append (map (lambda (second-circle) (let ((points (intersect first-circle second-circle)))
+      (if points points '()))) rest-circles))))))))
+
+;; #3 rate-points
+  (define (rate-points point-list)
+  (map (lambda (pt) (let ((product (distance-product pt point-list))) (list product pt))) point-list))
+
+;; #2 distance-product
+(define (distance-product pt pt-list)
+   (apply *  (map (lambda (other-pt)   (if (equal? pt other-pt) 1  
+   (dist pt other-pt)))  
+   pt-list)))
+
+
+
+;; #4 sort-points
+
+(define (sort-points rated-list)
+ (quicksort rated-list (lambda (rated1 rated2) (< (car rated1) (car rated2)))))
+
+
+;; #5 clumped-points
+
+(define (clumped-points point-list)
+  (map cadr (prefix-of-list (sort-points (rate-points point-list)) 
+      (quotient (length point-list) 2))))
+
+;; #6 average-point
+
+(define (average-point point-list)
+  (let* ((n (length point-list))
+         (avg-x (/ (apply + (map car point-list)) n))  
+         (avg-y (/ (apply + (map cadr point-list)) n)))  
+    (let ((pt (list avg-x avg-y)))  
+      (list (distance-product pt point-list) pt))))
+
+
+;; #7 best-estimate
+(define (best-estimate circle-list)
+  (average-point (clumped-points (intersection-points circle-list))))
+
+;; #8 where-am-i
+(define (where-am-i distances-list star-locations)
+ (prefix-of-list (sort-points (map best-estimate (all-guesses distances-list star-locations)))5))
 
 
 
