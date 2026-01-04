@@ -1,98 +1,149 @@
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
 #include <assert.h>
 #include <inttypes.h>
+#include <pthread.h>
 
 #include "teller.h"
+#include "bank.h"
 #include "account.h"
+#include "branch.h"
 #include "error.h"
 #include "debug.h"
 
-/*
- * deposit money into an account
- */
+static inline void lock_two_accounts(Account *a, Account *b)
+{
+  if (a == b) { pthread_mutex_lock(&a->lock); return; }
+  if (a->accountNumber < b->accountNumber) {
+    pthread_mutex_lock(&a->lock);
+    pthread_mutex_lock(&b->lock);
+  } else {
+    pthread_mutex_lock(&b->lock);
+    pthread_mutex_lock(&a->lock);
+  }
+}
+
+static inline void unlock_two_accounts(Account *a, Account *b)
+{
+  if (a == b) { pthread_mutex_unlock(&a->lock); return; }
+  if (a->accountNumber < b->accountNumber) {
+    pthread_mutex_unlock(&b->lock);
+    pthread_mutex_unlock(&a->lock);
+  } else {
+    pthread_mutex_unlock(&a->lock);
+    pthread_mutex_unlock(&b->lock);
+  }
+}
+
 int
 Teller_DoDeposit(Bank *bank, AccountNumber accountNum, AccountAmount amount)
 {
   assert(amount >= 0);
 
-  DPRINTF('t', ("Teller_DoDeposit(account 0x%"PRIx64" amount %"PRId64")\n",
-                accountNum, amount));
+  BranchID bid = AccountNum_GetBranchID(accountNum);
+  if (bid >= bank->numberBranches) return ERROR_ACCOUNT_NOT_FOUND;
 
-  Account *account = Account_LookupByNumber(bank, accountNum);
+  Branch *br = &bank->branches[bid];
+  pthread_rwlock_wrlock(&br->rwlock);
 
-  if (account == NULL) {
-    return ERROR_ACCOUNT_NOT_FOUND;
-  }
+  Account *acct = Account_LookupByNumber(bank, accountNum);
+  if (!acct) { pthread_rwlock_unlock(&br->rwlock); return ERROR_ACCOUNT_NOT_FOUND; }
 
-  Account_Adjust(bank,account, amount, 1);
+  pthread_mutex_lock(&acct->lock);
+  acct->balance += amount;
+  br->balance += amount;
+  pthread_mutex_unlock(&acct->lock);
+
+  pthread_rwlock_unlock(&br->rwlock);
   return ERROR_SUCCESS;
 }
 
-/*
- * withdraw money from an account
- */
 int
 Teller_DoWithdraw(Bank *bank, AccountNumber accountNum, AccountAmount amount)
 {
   assert(amount >= 0);
 
-  DPRINTF('t', ("Teller_DoWithdraw(account 0x%"PRIx64" amount %"PRId64")\n",
-                accountNum, amount));
+  BranchID bid = AccountNum_GetBranchID(accountNum);
+  if (bid >= bank->numberBranches) return ERROR_ACCOUNT_NOT_FOUND;
 
-  Account *account = Account_LookupByNumber(bank, accountNum);
+  Branch *br = &bank->branches[bid];
+  pthread_rwlock_wrlock(&br->rwlock);
 
-  if (account == NULL) {
-    return ERROR_ACCOUNT_NOT_FOUND;
-  }
+  Account *acct = Account_LookupByNumber(bank, accountNum);
+  if (!acct) { pthread_rwlock_unlock(&br->rwlock); return ERROR_ACCOUNT_NOT_FOUND; }
 
-  if (amount > Account_Balance(account)) {
+  pthread_mutex_lock(&acct->lock);
+
+  if (amount > acct->balance) {
+    pthread_mutex_unlock(&acct->lock);
+    pthread_rwlock_unlock(&br->rwlock);
     return ERROR_INSUFFICIENT_FUNDS;
   }
 
-  Account_Adjust(bank,account, -amount, 1);
+  acct->balance -= amount;
+  br->balance -= amount;
 
+  pthread_mutex_unlock(&acct->lock);
+  pthread_rwlock_unlock(&br->rwlock);
   return ERROR_SUCCESS;
 }
 
-/*
- * do a tranfer from one account to another account
- */
 int
-Teller_DoTransfer(Bank *bank, AccountNumber srcAccountNum,
-                  AccountNumber dstAccountNum,
-                  AccountAmount amount)
+Teller_DoTransfer(Bank *bank, AccountNumber srcNum,
+                  AccountNumber dstNum, AccountAmount amount)
 {
   assert(amount >= 0);
 
-  DPRINTF('t', ("Teller_DoTransfer(src 0x%"PRIx64", dst 0x%"PRIx64
-                ", amount %"PRId64")\n",
-                srcAccountNum, dstAccountNum, amount));
+  Account *src = Account_LookupByNumber(bank, srcNum);
+  Account *dst = Account_LookupByNumber(bank, dstNum);
+  if (!src || !dst) return ERROR_ACCOUNT_NOT_FOUND;
 
-  Account *srcAccount = Account_LookupByNumber(bank, srcAccountNum);
-  if (srcAccount == NULL) {
-    return ERROR_ACCOUNT_NOT_FOUND;
+  BranchID sb = AccountNum_GetBranchID(srcNum);
+  BranchID db = AccountNum_GetBranchID(dstNum);
+
+  if (sb == db) {
+    lock_two_accounts(src, dst);
+
+    if (amount > src->balance) {
+      unlock_two_accounts(src, dst);
+      return ERROR_INSUFFICIENT_FUNDS;
+    }
+
+    src->balance -= amount;
+    dst->balance += amount;
+
+    unlock_two_accounts(src, dst);
+    return ERROR_SUCCESS;
   }
 
-  Account *dstAccount = Account_LookupByNumber(bank, dstAccountNum);
-  if (dstAccount == NULL) {
-    return ERROR_ACCOUNT_NOT_FOUND;
+  Branch *b1 = &bank->branches[sb];
+  Branch *b2 = &bank->branches[db];
+
+  if (sb < db) {
+    pthread_rwlock_wrlock(&b1->rwlock);
+    pthread_rwlock_wrlock(&b2->rwlock);
+  } else {
+    pthread_rwlock_wrlock(&b2->rwlock);
+    pthread_rwlock_wrlock(&b1->rwlock);
   }
 
-  if (amount > Account_Balance(srcAccount)) {
+  lock_two_accounts(src, dst);
+
+  if (amount > src->balance) {
+    unlock_two_accounts(src, dst);
+    if (sb < db) { pthread_rwlock_unlock(&b2->rwlock); pthread_rwlock_unlock(&b1->rwlock); }
+    else { pthread_rwlock_unlock(&b1->rwlock); pthread_rwlock_unlock(&b2->rwlock); }
     return ERROR_INSUFFICIENT_FUNDS;
   }
 
-  /*
-   * If we are doing a transfer within the branch, we tell the Account module to
-   * not bother updating the branch balance since the net change for the
-   * branch is 0.
-   */
-  int updateBranch = !Account_IsSameBranch(srcAccountNum, dstAccountNum);
+  src->balance -= amount;
+  dst->balance += amount;
 
-  Account_Adjust(bank, srcAccount, -amount, updateBranch);
-  Account_Adjust(bank, dstAccount, amount, updateBranch);
+  bank->branches[sb].balance -= amount;
+  bank->branches[db].balance += amount;
+
+  unlock_two_accounts(src, dst);
+
+  if (sb < db) { pthread_rwlock_unlock(&b2->rwlock); pthread_rwlock_unlock(&b1->rwlock); }
+  else { pthread_rwlock_unlock(&b1->rwlock); pthread_rwlock_unlock(&b2->rwlock); }
 
   return ERROR_SUCCESS;
 }
