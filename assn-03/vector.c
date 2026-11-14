@@ -34,6 +34,7 @@ void VectorDispose(vector *v)
 static void vectorGrow (vector *v){
     v->allocSpace *= 2;
     v->elems = realloc (v->elems, v->allocSpace * v->myElemSize);
+    assert(v->elems!=NULL);
 }
 
 int VectorLength(const vector *v)
@@ -44,16 +45,17 @@ int VectorLength(const vector *v)
 
 void *VectorNth(const vector *v, int position)
 {   
-    if(position>=0 && position < v->logicSpace){
-        return (void *)((char *) v->elems + position *v->myElemSize);
-    }
-    return NULL; 
+    assert(position>=0 && position < v->logicSpace);
+    return (void *)((char *) v->elems + position *v->myElemSize);
 }
 
 void VectorReplace(vector *v, const void *elemAddr, int position)
 {
     assert(position>=0 && position < v->logicSpace);
     void * toReplace = (char *)v->elems + position * v->myElemSize;
+    if (v->func!=NULL){
+        v->func (toReplace);
+    }
     memcpy (toReplace, elemAddr, v->myElemSize);
 }
 
@@ -88,7 +90,10 @@ void VectorDelete(vector *v, int position)
     assert(position>=0 && position < v->logicSpace);
     void * target1 = (char *)v->elems + position * v->myElemSize;
     void * target2 = (char *)v->elems + (position + 1) * v->myElemSize;
-    memmove (target1, target2, v->logicSpace*v->myElemSize-position*v->myElemSize);
+    if (v->func!=NULL){
+        v->func (target1);
+    }
+    memmove (target1, target2, (v->logicSpace-position-1)*v->myElemSize);
     v->logicSpace--;
 
 }
