@@ -628,7 +628,7 @@ void updateData(char *word, const char *articleTitle, const char *articleURL, ha
     Article *article = (Article *)VectorNth(articles, i);
     URLNewAbsolute(&vectorURL, article->URL);
     if (!strcasecmp(articleURL, article->URL) || 
-    (strcasecmp(URL.serverName, vectorURL.serverName) && !strcasecmp(articleTitle, article->title))) 
+    (!strcasecmp(URL.serverName, vectorURL.serverName) && !strcasecmp(articleTitle, article->title)))
     {
       article->freq++;
       URLDispose(&vectorURL);
@@ -659,7 +659,8 @@ static void QueryIndices(hashset *stopWords, hashset *map) {
   char response[1024];
   while (true) {
     // printf("Please enter a single query term that might be in our set of indices [enter to quit]: ");
-    fgets(response, sizeof(response), stdin);
+    if (fgets(response, sizeof(response), stdin) == NULL)
+      break;
     response[strlen(response) - 1] = '\0';
     if (strcasecmp(response, "") == 0)
       break;
