@@ -261,7 +261,7 @@
 
 ;; #8 where-am-i
 (define (where-am-i distances-list star-locations)
- (prefix-of-list (sort-points (map best-estimate (all-guesses distances-list star-locations)))5))
+ (sort-points (map best-estimate (all-guesses distances-list star-locations))))
 
 
 
